@@ -83,9 +83,9 @@ stages:
           - checkout: self
 
           - powershell: |
-              choco install terraform -y
+              choco install terraform --version=1.5.7 -y
               terraform -version
-            displayName: "Install Terraform"
+            displayName: "Install Terraform (Pinned Version)"
 
           - download: current
             artifact: tfplan
@@ -103,6 +103,13 @@ stages:
                   -backend-config="container_name=$(TFSTATE_CONTAINER)" `
                   -backend-config="key=$(TFSTATE_KEY)"
 
+          # Optional safeguard: clear stale locks before apply
+          - powershell: |
+              Write-Host "Checking for stale Terraform locks..."
+              # Replace with actual lock ID if error occurs
+              # terraform force-unlock -force <lock-id>
+            displayName: "Force unlock state (manual if needed)"
+
           - task: AzureCLI@2
             displayName: "Terraform import RG if exists (safe)"
             inputs:
@@ -111,8 +118,6 @@ stages:
               scriptLocation: "inlineScript"
               inlineScript: |
                 $rgName = "$(TF_RG_NAME)"
-
-                # Check if RG exists in Azure
                 $exists = az group exists --name $rgName
                 if ($exists -eq "true") {
                   $subId = az account show --query id -o tsv
@@ -130,4 +135,4 @@ stages:
               scriptType: "ps"
               scriptLocation: "inlineScript"
               inlineScript: |
-                terraform apply -auto-approve "$(Pipeline.Workspace)\tfplan\tfplan"
+                terraform apply -auto-approve "$(Pipeline.Workspace)/tfplan/tfplan"
