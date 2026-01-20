@@ -103,12 +103,27 @@ stages:
                   -backend-config="container_name=$(TFSTATE_CONTAINER)" `
                   -backend-config="key=$(TFSTATE_KEY)"
 
-          # Optional safeguard: clear stale locks before apply
+          # 🔎 Detect and clear stale lock automatically
           - powershell: |
-              Write-Host "Checking for stale Terraform locks..."
-              # Replace with actual lock ID if error occurs
-              # terraform force-unlock -force <lock-id>
-            displayName: "Force unlock state (manual if needed)"
+              Write-Host "Checking for Terraform state lock..."
+              try {
+                terraform plan -lock-timeout=60s -detailed-exitcode `
+                  -var="location=$(TF_LOCATION)" `
+                  -var="rg_name=$(TF_RG_NAME)" `
+                  -var="storage_account_name=$(TF_SA_NAME)" `
+                  -var="container_name=$(TF_CONTAINER_NAME)" `
+                  -var="env=$(TF_ENV)"
+              }
+              catch {
+                Write-Host "Plan failed, checking for lock..."
+                $lockId = terraform force-unlock -list | Select-String "ID"
+                if ($lockId) {
+                  $id = $lockId.ToString().Split(":")[1].Trim()
+                  Write-Host "Force unlocking stale lock with ID $id"
+                  terraform force-unlock -force $id
+                }
+              }
+            displayName: "Auto-detect and clear stale lock"
 
           - task: AzureCLI@2
             displayName: "Terraform import RG if exists (safe)"
